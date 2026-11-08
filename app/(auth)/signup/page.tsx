@@ -6,7 +6,11 @@ import { AuthForm } from "@/components/site/auth-form";
 import { getSession, roleHome } from "@/lib/auth";
 import { getDefaultMapCenter } from "@/lib/services/map-defaults";
 
-export const metadata: Metadata = { title: "Create your account" };
+export const metadata: Metadata = {
+  title: "Create your free account — compare lab test prices near you",
+  description: "Sign up free, pin your address and send one request. Diagnostic labs within 20 km reply with their best prices for your tests.",
+  alternates: { canonical: "/signup" },
+};
 
 async function Gate() {
   const s = await getSession();

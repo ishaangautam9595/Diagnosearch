@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { AuthForm } from "@/components/site/auth-form";
 import { getSession, roleHome } from "@/lib/auth";
 
-export const metadata: Metadata = { title: "Sign in" };
+export const metadata: Metadata = { title: "Sign in", robots: { index: false, follow: true }, alternates: { canonical: "/login" } };
 
 async function Gate() {
   const s = await getSession();

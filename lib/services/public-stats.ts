@@ -13,3 +13,11 @@ export async function getPublicStats() {
   ]);
   return { labs, tests, cities: cities.length };
 }
+
+/** Approved, active labs for the sitemap. */
+export async function listSitemapLabs() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("catalogue");
+  return db.laboratory.findMany({ where: { isActive: true, approvalStatus: "APPROVED" }, select: { slug: true, updatedAt: true }, orderBy: { slug: "asc" } });
+}

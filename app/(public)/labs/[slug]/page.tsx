@@ -5,11 +5,17 @@ import { getPublicLab, getRatingBreakdown, getRatingSummaries, listLabReviews } 
 import { Badge, Card } from "@/components/ui/card";
 import { Stars } from "@/components/reviews/stars";
 import { formatDate } from "@/lib/utils";
+import { JsonLd } from "@/components/seo/json-ld";
+import { SITE_NAME, breadcrumbLd, labLd } from "@/lib/seo";
 
 export async function generateMetadata({ params }: PageProps<"/labs/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const lab = await getPublicLab(slug);
-  return { title: lab ? `${lab.name} · Reviews` : "Laboratory" };
+  if (!lab) return { title: "Laboratory not found", robots: { index: false, follow: false } };
+  const city = lab.addresses[0]?.city;
+  const title = `${lab.name}${city ? ` in ${city}` : ""} — reviews, branches & contact`;
+  const description = (lab.description?.trim() || `${lab.name}${city ? `, a diagnostic laboratory in ${city}` : ", a diagnostic laboratory"}.`).slice(0, 155) + ` Read patient reviews and send a request on ${SITE_NAME}.`;
+  return { title, description, alternates: { canonical: `/labs/${lab.slug}` }, openGraph: { type: "website", title, description, url: `/labs/${lab.slug}` } };
 }
 
 /** Public lab profile: details plus every patient rating and review. Visible to anyone. */
@@ -23,6 +29,8 @@ export default async function PublicLabPage({ params }: PageProps<"/labs/[slug]"
     listLabReviews(lab.id),
   ]);
   return (
+    <>
+    <JsonLd nodes={[labLd(lab, summary, reviews), breadcrumbLd([{ name: "Home", path: "/" }, { name: lab.name, path: `/labs/${lab.slug}` }])]} />
     <div className="mx-auto grid max-w-5xl gap-6 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
       <div className="space-y-4 lg:self-start">
         <Card className="space-y-3">
@@ -83,5 +91,6 @@ export default async function PublicLabPage({ params }: PageProps<"/labs/[slug]"
         ))}
       </section>
     </div>
+    </>
   );
 }

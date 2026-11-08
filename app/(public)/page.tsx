@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -6,6 +7,8 @@ import { HeroVisual } from "@/components/site/hero-visual";
 import { CountUp } from "@/components/site/count-up";
 import { InView, InViewStagger, Stagger } from "@/components/site/motion";
 import { getPublicStats } from "@/lib/services/public-stats";
+import { JsonLd } from "@/components/seo/json-ld";
+import { faqLd, howToLd, organizationLd, webApplicationLd, websiteLd } from "@/lib/seo";
 
 const steps = [
   { icon: MapPinned, title: "Sign up & pin your address", text: "Create an account and drop a pin — we use it to find labs within 20 km of you." },
@@ -14,7 +17,15 @@ const steps = [
   { icon: BadgeCheck, title: "Accept the best offer", text: "Choose one — the other offers and chats are deleted. Send your next request any time." },
 ];
 
+export const metadata: Metadata = {
+  title: { absolute: "DiagnoSearch — Compare diagnostic test prices from labs near you" },
+  description: "Upload a prescription or list your tests and labs within 20 km send you their best prices. Compare blood test and diagnostic offers, chat with labs and book — free for patients.",
+  alternates: { canonical: "/" },
+};
+
 const faqs = [
+  { q: "What is DiagnoSearch?", a: "DiagnoSearch is a free platform where patients send one request — a prescription photo and/or a list of diagnostic tests — and approved laboratories within 20 km reply with their best price. You compare offers, chat with the labs and accept the one you like. DiagnoSearch connects you with laboratories; it is not a laboratory or a medical provider." },
+  { q: "How can I compare diagnostic test prices near me?", a: "Create a free account, pin your address, and upload your prescription or choose your tests. Every approved lab within 20 km of you receives the request and sends its total price, so you can compare real offers for your exact tests in one place." },
   { q: "How does it work?", a: "You send one request — a prescription photo and/or a list of tests. Every approved laboratory within 20 km of your address receives it and replies with its best total price. You compare, chat, and accept the one you like." },
   { q: "What happens to the other offers when I accept one?", a: "They are deleted, along with those laboratories' chats and their access to your prescription. Only the lab you accepted keeps the conversation going so you can arrange your visit." },
   { q: "Who can see my prescription and phone number?", a: "Only laboratories within 20 km see your request, and labs see just your first name and area. Your full name, contact details and exact address are shared only with the lab whose offer you accept." },
@@ -47,6 +58,7 @@ async function Stats() {
 export default function HomePage() {
   return (
     <>
+      <JsonLd nodes={[organizationLd(), websiteLd(), webApplicationLd(), faqLd(faqs), howToLd("How to get the best diagnostic test price near you", steps)]} />
       {/* ───────── Hero ───────── */}
       <section className="relative overflow-hidden border-b border-border bg-gradient-to-b from-mint-soft via-white to-background">
         <div aria-hidden className="absolute inset-0 opacity-[0.5] [background-image:radial-gradient(#cfe9dc_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />

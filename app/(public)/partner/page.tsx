@@ -5,7 +5,11 @@ import { PartnerForm } from "@/components/patient/partner-form";
 import { Skeleton } from "@/components/ui/card";
 import { getDefaultMapCenter } from "@/lib/services/map-defaults";
 
-export const metadata: Metadata = { title: "Become a lab partner" };
+export const metadata: Metadata = {
+  title: "Become a lab partner — get diagnostic test requests from patients near you",
+  description: "Diagnostic laboratories: join DiagnoSearch to receive prescriptions and test requests from patients within 20 km of each branch, quote your best price and win bookings. Free to apply.",
+  alternates: { canonical: "/partner" },
+};
 
 async function FormLoader() {
   return <PartnerForm center={await getDefaultMapCenter()} />;
