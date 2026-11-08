@@ -1,0 +1,412 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  PATIENT
+  LAB_OWNER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LabSource {
+  ADMIN
+  SELF_SIGNUP
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+}
+
+enum FastingRequirement {
+  UNKNOWN
+  REQUIRED
+  NOT_REQUIRED
+}
+
+enum ServiceType {
+  ANY
+  HOME_COLLECTION
+  WALK_IN
+}
+
+enum RequestStatus {
+  OPEN
+  ACCEPTED
+  /// The lab marked the booking as done; loyalty coins were awarded and the patient can review.
+  COMPLETED
+  CANCELLED
+}
+
+enum OfferStatus {
+  SENT
+  ACCEPTED
+}
+
+enum LabEventType {
+  REQUEST_RECEIVED
+  OFFER_SENT
+  OFFER_WON
+  OFFER_LOST
+}
+
+enum ChatSender {
+  PATIENT
+  LAB
+}
+
+model User {
+  id           String  @id @default(uuid()) @db.Uuid
+  email        String? @unique
+  phone        String? @unique
+  name         String
+  /// bcrypt hash. Every account type signs in with email/mobile + password.
+  passwordHash String?
+  role         Role
+  isActive     Boolean @default(true)
+
+  // Patient profile (also the default location for new requests)
+  addressLine String?
+  city        String?
+  pincode     String?
+  latitude    Float?
+  longitude   Float?
+
+  /// For LAB_OWNER accounts: the laboratory they manage.
+  laboratoryId String?     @db.Uuid
+  laboratory   Laboratory? @relation(fields: [laboratoryId], references: [id], onDelete: SetNull)
+
+  /// Loyalty coin balance (patients). The ledger is `LoyaltyTransaction`.
+  loyaltyCoins Int @default(0)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  requests            TestRequest[]
+  loyaltyTransactions LoyaltyTransaction[]
+  reviews             LabReview[]
+  messages            ChatMessage[]
+  auditLogs           AuditLog[]
+
+  @@index([role])
+  @@index([laboratoryId])
+}
+
+model Laboratory {
+  id                      String             @id @default(uuid()) @db.Uuid
+  slug                    String             @unique
+  name                    String
+  description             String?
+  phone                   String
+  whatsapp                String?
+  email                   String?
+  contactPerson           String?
+  openingHours            String?
+  accreditation           String?
+  isActive                Boolean            @default(true)
+  verificationStatus      VerificationStatus @default(UNVERIFIED)
+  verifiedAt              DateTime?
+  homeCollectionAvailable Boolean            @default(false)
+  approvalStatus          ApprovalStatus     @default(APPROVED)
+  source                  LabSource          @default(ADMIN)
+  rejectionReason         String?
+  reviewedAt              DateTime?
+  isDemo                  Boolean            @default(false)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  addresses  LaboratoryAddress[]
+  owners     User[]
+  recipients RequestRecipient[]
+  offers     Offer[]
+  messages   ChatMessage[]
+  events     LabEvent[]
+  reviews    LabReview[]
+
+  @@index([isActive, approvalStatus])
+}
+
+model LaboratoryAddress {
+  id           String   @id @default(uuid()) @db.Uuid
+  laboratoryId String   @db.Uuid
+  label        String?
+  line1        String
+  line2        String?
+  city         String
+  pincode      String
+  latitude     Float?
+  longitude    Float?
+  isPrimary    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+
+  @@index([laboratoryId])
+  @@index([latitude, longitude])
+}
+
+model TestCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tests DiagnosticTest[]
+}
+
+model DiagnosticTest {
+  id                      String             @id @default(uuid()) @db.Uuid
+  slug                    String             @unique
+  name                    String
+  categoryId              String             @db.Uuid
+  description             String?
+  sampleType              String?
+  preparationInstructions String?
+  preparationVerifiedAt   DateTime?
+  fastingRequirement      FastingRequirement @default(UNKNOWN)
+  fastingHours            Int?
+  turnaroundHours         Int?
+  turnaroundNote          String?
+  isPackage               Boolean            @default(false)
+  isActive                Boolean            @default(true)
+  isDemo                  Boolean            @default(false)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  category     TestCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  requestTests RequestTest[]
+
+  @@index([categoryId, isActive])
+  @@index([name])
+}
+
+/// A patient's ask: a prescription photo and/or a list of tests, sent to every lab within `radiusKm`.
+model TestRequest {
+  id        String        @id @default(uuid()) @db.Uuid
+  reference String        @unique
+  patientId String        @db.Uuid
+  status    RequestStatus @default(OPEN)
+  notes     String?
+  service   ServiceType   @default(ANY)
+
+  // Location snapshot taken at submit time (patients can change their profile later).
+  addressLine String
+  city        String
+  pincode     String
+  latitude    Float
+  longitude   Float
+  radiusKm    Int    @default(20)
+
+  acceptedOfferId      String?   @db.Uuid
+  acceptedLabId        String?   @db.Uuid
+  acceptedAt           DateTime?
+  completedAt          DateTime?
+  /// Loyalty coins credited to the patient when the lab marked this request completed.
+  coinsAwarded         Int?
+  /// Captured when an offer is accepted (the losing offers are deleted): drives the patient's "you saved" insight.
+  offersAtAccept       Int?
+  highestOfferAtAccept Decimal?  @db.Decimal(10, 2)
+  firstOfferAt         DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  patient            User                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tests              RequestTest[]
+  images             PrescriptionImage[]
+  recipients         RequestRecipient[]
+  offers             Offer[]
+  messages           ChatMessage[]
+  review             LabReview?
+  loyaltyTransaction LoyaltyTransaction?
+
+  @@index([patientId, createdAt])
+  @@index([status, createdAt])
+}
+
+model RequestTest {
+  id        String  @id @default(uuid()) @db.Uuid
+  requestId String  @db.Uuid
+  /// Set when picked from the catalogue; null for a test the patient typed in.
+  testId    String? @db.Uuid
+  name      String
+
+  request TestRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  test    DiagnosticTest? @relation(fields: [testId], references: [id], onDelete: SetNull)
+
+  @@index([requestId])
+}
+
+/// Compressed prescription image. Bytes live in object storage (R2) when `storageKey` is set, otherwise in `data`.
+model PrescriptionImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @db.Uuid
+  /// Null until the request is submitted (uploads are attached on submit).
+  requestId String?  @db.Uuid
+  data      Bytes?
+  storageKey String?
+  mimeType  String
+  width     Int
+  height    Int
+  bytes     Int
+  createdAt DateTime @default(now())
+
+  request TestRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([ownerId, createdAt])
+}
+
+/// Which laboratories received a request. A lab can only see requests it is a recipient of.
+model RequestRecipient {
+  id           String    @id @default(uuid()) @db.Uuid
+  requestId    String    @db.Uuid
+  laboratoryId String    @db.Uuid
+  distanceKm   Float
+  firstSeenAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  request    TestRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, laboratoryId])
+  @@index([laboratoryId, createdAt])
+}
+
+model Offer {
+  id                      String      @id @default(uuid()) @db.Uuid
+  requestId               String      @db.Uuid
+  laboratoryId            String      @db.Uuid
+  totalPrice              Decimal     @db.Decimal(10, 2)
+  homeCollectionAvailable Boolean     @default(false)
+  reportTimeHours         Int?
+  note                    String?
+  status                  OfferStatus @default(SENT)
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  request    TestRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, laboratoryId])
+  @@index([laboratoryId, status])
+}
+
+/// One chat thread per (request, laboratory).
+model ChatMessage {
+  id           String     @id @default(uuid()) @db.Uuid
+  requestId    String     @db.Uuid
+  laboratoryId String     @db.Uuid
+  senderId     String     @db.Uuid
+  sender       ChatSender
+  body         String
+  createdAt    DateTime   @default(now())
+
+  request    TestRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, laboratoryId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model RateLimitHit {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// Anonymous activity log that survives request deletion. Powers the lab dashboard charts.
+/// Holds no patient content: only counts, prices and a coarse (~1 km) location.
+model LabEvent {
+  id               String       @id @default(uuid()) @db.Uuid
+  laboratoryId     String       @db.Uuid
+  type             LabEventType
+  /// The lab's own price (OFFER_SENT / OFFER_WON / OFFER_LOST).
+  amount           Decimal?     @db.Decimal(10, 2)
+  /// On OFFER_LOST: the price that won.
+  competitorAmount Decimal?     @db.Decimal(10, 2)
+  /// On REQUEST_RECEIVED: km from the nearest branch.
+  distanceKm       Float?
+  /// On OFFER_SENT: minutes between receiving the request and quoting.
+  responseMinutes  Int?
+  /// Patient location rounded to 2 decimals (~1 km) — for the demand map only.
+  approxLat        Float?
+  approxLng        Float?
+  createdAt        DateTime     @default(now())
+
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+
+  @@index([laboratoryId, createdAt])
+}
+
+/// Ledger of loyalty coins. One credit per completed request (`requestId` is unique), so a booking can never pay twice.
+model LoyaltyTransaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  requestId String?  @unique @db.Uuid
+  coins     Int
+  reason    String
+  createdAt DateTime @default(now())
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request TestRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+/// A patient's rating of the lab that completed their booking. Public on the lab's page; one per request.
+model LabReview {
+  id           String   @id @default(uuid()) @db.Uuid
+  laboratoryId String   @db.Uuid
+  patientId    String   @db.Uuid
+  requestId    String   @unique @db.Uuid
+  /// 1–5
+  rating       Int
+  comment      String?
+  createdAt    DateTime @default(now())
+
+  laboratory Laboratory  @relation(fields: [laboratoryId], references: [id], onDelete: Cascade)
+  patient    User        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  request    TestRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([laboratoryId, createdAt])
+}
